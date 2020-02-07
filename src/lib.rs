@@ -1,6 +1,6 @@
 use std::{env, ffi::OsString, fs, path::PathBuf, process::Command};
 
-use clap::{App, Arg};
+use clap::{App, AppSettings, Arg};
 
 pub type BoxError = Box<dyn std::error::Error>;
 
@@ -21,6 +21,7 @@ pub fn run(args: impl Iterator<Item = impl Into<OsString> + Clone>) -> Result<()
     let matches = App::new("enw")
         .about(ABOUT)
         .usage(USAGE)
+        .setting(AppSettings::TrailingVarArg)
         .arg(
             Arg::with_name("env_file")
                 .short("f")
