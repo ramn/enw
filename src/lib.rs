@@ -1,4 +1,4 @@
-use std::{env, ffi::OsString, fs, path::PathBuf, process::Command};
+use std::{env, ffi::OsString, fs, iter, path::PathBuf, process::Command};
 
 use clap::{App, AppSettings, Arg};
 
@@ -49,12 +49,16 @@ pub fn run(args: impl Iterator<Item = impl Into<OsString> + Clone>) -> Result<()
 
     let mut opt_builder = OptionsBuilder::default();
     opt_builder.ignore_env = matches.is_present("ignore_env");
-    opt_builder.env_files.push(env::current_dir()?.join(".env"));
-    opt_builder.env_files = matches
-        .values_of_lossy("env_file")
-        .unwrap_or_else(|| vec![])
-        .iter()
-        .map(|fname| fname.into())
+    // .env file from current dir automatically loaded, overridden by explicitly passed in .env
+    // files
+    opt_builder.env_files = iter::once(env::current_dir()?.join(".env"))
+        .chain(
+            matches
+                .values_of_lossy("env_file")
+                .unwrap_or(vec![])
+                .iter()
+                .map(|fname| fname.into()),
+        )
         .collect();
     let rest = matches.values_of_lossy("rest").unwrap_or_else(|| vec![]);
     opt_builder.vars = rest
