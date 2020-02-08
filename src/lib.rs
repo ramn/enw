@@ -1,4 +1,4 @@
-use std::{env, ffi::OsString, fs, iter, path::PathBuf, process::Command};
+use std::{env, ffi::OsString, fs, path::PathBuf, process::Command};
 
 use clap::{App, AppSettings, Arg, ArgMatches};
 
@@ -16,6 +16,7 @@ struct OptionsBuilder {
     command: String,
     args: Vec<String>,
     ignore_env: bool,
+    load_implicit_env_file: bool,
 }
 
 pub fn run(args: impl Iterator<Item = impl Into<OsString> + Clone>) -> Result<(), BoxError> {
@@ -73,6 +74,12 @@ fn parse_arguments(args: impl Iterator<Item = impl Into<OsString> + Clone>) -> A
                 .help("start with an empty environment"),
         )
         .arg(
+            Arg::with_name("no_implicit_env_file")
+                .short("n")
+                .long("no-env-file")
+                .help("don't implicitly load the .env file from current dir"),
+        )
+        .arg(
             Arg::with_name("rest")
                 .value_name("REST")
                 .takes_value(true)
@@ -115,17 +122,22 @@ impl OptionsBuilder {
         const DEFAULT_VEC: Vec<String> = Vec::new();
         let mut opt_builder = OptionsBuilder::default();
         opt_builder.ignore_env = matches.is_present("ignore_env");
-        // .env file from current dir automatically loaded, overridden by explicitly passed in .env
-        // files
-        opt_builder.env_files = iter::once(env::current_dir()?.join(DEFAULT_ENV_FILE_NAME))
-            .chain(
-                matches
-                    .values_of_lossy("env_file")
-                    .unwrap_or(DEFAULT_VEC)
-                    .iter()
-                    .map(|fname| fname.into()),
-            )
-            .collect();
+        opt_builder.load_implicit_env_file = !matches.is_present("no_implicit_env_file");
+
+        if opt_builder.load_implicit_env_file {
+            // .env file from current dir automatically loaded, overridden by explicitly passed in .env
+            // files
+            opt_builder
+                .env_files
+                .push(env::current_dir()?.join(DEFAULT_ENV_FILE_NAME));
+        }
+        opt_builder.env_files.extend(
+            matches
+                .values_of_lossy("env_file")
+                .unwrap_or(DEFAULT_VEC)
+                .iter()
+                .map(|fname| fname.into()),
+        );
         let rest = matches.values_of_lossy("rest").unwrap_or_else(|| vec![]);
         opt_builder.vars = rest
             .iter()
