@@ -7,6 +7,7 @@ pub type BoxError = Box<dyn std::error::Error>;
 const ABOUT: &str =
     "Similar to the GNU env command, but will automatically load an .env file, if found.";
 const USAGE: &str = "enw [OPTION]... [-] [NAME=VALUE] [COMMAND [ARGS]...]";
+const DEFAULT_ENV_FILE_NAME: &str = ".env";
 
 #[derive(Debug, Default)]
 struct OptionsBuilder<'a> {
@@ -51,7 +52,7 @@ pub fn run(args: impl Iterator<Item = impl Into<OsString> + Clone>) -> Result<()
     opt_builder.ignore_env = matches.is_present("ignore_env");
     // .env file from current dir automatically loaded, overridden by explicitly passed in .env
     // files
-    opt_builder.env_files = iter::once(env::current_dir()?.join(".env"))
+    opt_builder.env_files = iter::once(env::current_dir()?.join(DEFAULT_ENV_FILE_NAME))
         .chain(
             matches
                 .values_of_lossy("env_file")
@@ -81,7 +82,7 @@ pub fn run(args: impl Iterator<Item = impl Into<OsString> + Clone>) -> Result<()
         .filter(|p| p.exists())
         .map(|path| {
             if path.is_dir() {
-                path.join(".env")
+                path.join(DEFAULT_ENV_FILE_NAME)
             } else {
                 path
             }
