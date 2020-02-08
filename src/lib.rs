@@ -91,12 +91,15 @@ fn parse_arguments(args: impl Iterator<Item = impl Into<OsString> + Clone>) -> A
 
 fn parse_env_file(text: &str) -> Vec<Result<(String, String), BoxError>> {
     text.lines()
+        // TODO: don't trim the end of the string
         .map(|line| line.trim())
         .filter(|line| line.contains('=') && !line.starts_with('#'))
         .map(parse_env_line)
         .collect()
 }
 
+// TODO: don't trim or expand quotes in the value. Don't support comment at end of line. We should
+// be compatible with different shells, that might not do automatic expansion (dequoting).
 fn parse_env_line(line: &str) -> Result<(String, String), BoxError> {
     let mut parts = line.splitn(2, '=').map(str::trim);
     let key = parts.next().ok_or("KEY missing")?;
