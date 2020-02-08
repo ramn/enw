@@ -69,7 +69,7 @@ fn parse_arguments(args: impl Iterator<Item = impl Into<OsString> + Clone>) -> A
         .arg(
             Arg::with_name("ignore_env")
                 .short("i")
-                .long("ignore_env")
+                .long("ignore-env")
                 .help("start with an empty environment"),
         )
         .arg(
