@@ -1,6 +1,7 @@
 use std::process::Command;
 
-const EXPECTED: &str = r#"MY_URL="https://xyzzy:xyzzy@localhost:80/xyzzy?abc=def#fragment"
+const EXPECTED: &str = r#"
+MY_URL=https://xyzzy:xyzzy@localhost:80/xyzzy?abc=def#fragment
 a=b
 c=d
 e=f
@@ -28,5 +29,5 @@ fn test_cli() {
         .unwrap();
     assert!(actual.status.success());
     let stdout = String::from_utf8_lossy(&actual.stdout);
-    assert_eq!(stdout, EXPECTED);
+    assert_eq!(stdout, EXPECTED[1..]);
 }

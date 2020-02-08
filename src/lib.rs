@@ -106,6 +106,7 @@ fn parse_env_line(line: &str) -> Result<(String, String), BoxError> {
     {
         value = &value[0..hash_ix].trim();
     }
+    value = value.trim_matches(&['"', '\''][..]);
     Ok((key.to_owned(), value.to_owned()))
 }
 
@@ -156,7 +157,7 @@ mod tests {
         .unwrap();
         let expetced = (
             "MY_URL".into(),
-            "\"https://xyzzy:xyzzy@localhost:80/xyzzy?abc=def#fragment\"".into(),
+            "https://xyzzy:xyzzy@localhost:80/xyzzy?abc=def#fragment".into(),
         );
         assert_eq!(actual, expetced);
     }
