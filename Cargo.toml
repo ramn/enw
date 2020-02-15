@@ -12,3 +12,6 @@ keywords = ["env", "unix", "cli"]
 
 [dependencies]
 clap = "2.33.0"
+
+[dev-dependencies]
+pretty_assertions = "0.6.1"

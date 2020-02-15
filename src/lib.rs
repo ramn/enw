@@ -103,21 +103,49 @@ fn parse_env_file(text: &str) -> Vec<Result<(String, String), BoxError>> {
 fn parse_env_line(line: &str) -> Result<(String, String), BoxError> {
     let mut parts = line.splitn(2, '=').map(str::trim);
     let key = parts.next().ok_or("KEY missing")?;
-    let mut value = parts.next().ok_or("VALUE missing")?;
-    if let (_, Some(hash_ix)) =
-        value
-            .chars()
-            .enumerate()
-            .fold((false, None), |(in_quote, hash_ix), (i, c)| match c {
-                '"' => (!in_quote, hash_ix),
-                '#' => (in_quote, if in_quote { hash_ix } else { Some(i) }),
-                _ => (in_quote, hash_ix),
-            })
-    {
-        value = &value[0..hash_ix].trim();
+    let value = parts.next().ok_or("VALUE missing")?;
+    let value = strip_tail_comment(value)
+        .trim_matches(&['"', '\''][..])
+        .replace(r#"\""#, r#"""#)
+        .replace(r#"\'"#, r#"'"#);
+    Ok((key.to_owned(), value))
+}
+
+fn strip_tail_comment(value: &str) -> &str {
+    enum S {
+        Start,
+        Quote,
+    };
+    let mut state = S::Start;
+    let mut octothorp_ix = None;
+    let mut chars = value.chars().enumerate();
+    'outer: while let Some((i, c)) = chars.next() {
+        match state {
+            S::Start => match c {
+                '"' => state = S::Quote,
+                '\\' => {
+                    chars.next();
+                }
+                '#' => {
+                    octothorp_ix = Some(i);
+                    break 'outer;
+                }
+                _ => {}
+            },
+            S::Quote => match c {
+                '"' => state = S::Start,
+                '\\' => {
+                    chars.next();
+                }
+                _ => {}
+            },
+        }
     }
-    value = value.trim_matches(&['"', '\''][..]);
-    Ok((key.to_owned(), value.to_owned()))
+    if let Some(octothorp_ix) = octothorp_ix {
+        &value[0..octothorp_ix].trim()
+    } else {
+        value
+    }
 }
 
 impl OptionsBuilder {
@@ -162,18 +190,29 @@ impl OptionsBuilder {
 
 #[cfg(test)]
 mod tests {
+    use pretty_assertions::assert_eq;
+
     use super::*;
 
     #[test]
     fn test_parse_env_line() {
-        let actual = parse_env_line(
+        assert_equal(
             r#" MY_URL = "https://xyzzy:xyzzy@localhost:80/xyzzy?abc=def#fragment" # comment"#,
-        )
-        .unwrap();
-        let expetced = (
-            "MY_URL".into(),
-            "https://xyzzy:xyzzy@localhost:80/xyzzy?abc=def#fragment".into(),
+            (
+                "MY_URL",
+                "https://xyzzy:xyzzy@localhost:80/xyzzy?abc=def#fragment",
+            ),
         );
-        assert_eq!(actual, expetced);
+        assert_equal(
+            r##"key="https://xyzzy:xyzzy@localhost:80/xyzzy?abc=\"def#\"#fragment" # comment"##,
+            (
+                "key",
+                r##"https://xyzzy:xyzzy@localhost:80/xyzzy?abc="def#"#fragment"##,
+            ),
+        );
+    }
+
+    fn assert_equal(input: &str, (k, v): (&str, &str)) {
+        assert_eq!(parse_env_line(input).unwrap(), (k.into(), v.into()));
     }
 }
