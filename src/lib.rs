@@ -38,7 +38,7 @@ pub fn run(args: impl Iterator<Item = impl Into<OsString> + Clone>) -> Result<()
         .collect::<Result<_, _>>()?;
     let mut env_vars: Vec<_> = env_files
         .iter()
-        .flat_map(|text| parse_env_file(&text))
+        .flat_map(|text| parse_env_doc(&text))
         .collect::<Result<_, _>>()?;
     env_vars.extend(opt_builder.vars.into_iter());
 
@@ -89,10 +89,9 @@ fn parse_arguments(args: impl Iterator<Item = impl Into<OsString> + Clone>) -> A
         .get_matches_from(args)
 }
 
-fn parse_env_file(text: &str) -> Vec<Result<(String, String), BoxError>> {
+fn parse_env_doc(text: &str) -> Vec<Result<(String, String), BoxError>> {
     text.lines()
-        // TODO: don't trim the end of the string
-        .map(|line| line.trim())
+        .map(|line| line.trim_start())
         .filter(|line| line.contains('=') && !line.starts_with('#'))
         .map(parse_env_line)
         .collect()
@@ -104,9 +103,20 @@ fn parse_env_file(text: &str) -> Vec<Result<(String, String), BoxError>> {
 fn parse_env_line(line: &str) -> Result<(String, String), BoxError> {
     let mut parts = line.splitn(2, '=').map(str::trim);
     let key = parts.next().ok_or("KEY missing")?;
-    let value = parts.next().unwrap_or("");
-    let value = parse_value(value);
+    if !key_is_valid(key) {
+        return Err(format!("KEY contains invalid characters: {}", key).into());
+    }
+    let value = parse_value(parts.next().unwrap_or(""));
     Ok((key.to_owned(), value))
+}
+
+fn key_is_valid(key: &str) -> bool {
+    key.len() > 0
+        && key
+            .chars()
+            .take(1)
+            .all(|c| c.is_ascii_alphabetic() || c == '_')
+        && key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
 fn parse_value(v: &str) -> String {
@@ -300,9 +310,36 @@ mod tests {
             ("KEY9", ""),
             ("KEY10", "whitespace before ="),
             ("KEY11", "whitespace after ="),
-        ].into_iter().map(|(k, v)| owned(k, v));
+        ]
+        .into_iter()
+        .map(|(k, v)| owned(k, v));
         for (actual, expected) in inputs.lines().map(parse_env_line).zip(expected_iter) {
             assert_eq!(actual.unwrap(), expected);
+        }
+    }
+
+    #[test]
+    fn test_parse_line_comment() {
+        let actual = parse_env_doc(
+            r"\
+            # foo=bar\
+            #    ",
+        );
+        assert!(actual.is_empty());
+    }
+
+    #[test]
+    fn test_parse_line_invalid() {
+        // Note 4 spaces after 'invalid' below
+        let actual = parse_env_doc(
+            "  invalid    \n\
+            very bacon = yes indeed\n\
+            =value",
+        );
+
+        assert_eq!(actual.len(), 2);
+        for actual in actual {
+            assert!(actual.is_err(), "unexpectedly ok: {:?}", actual.unwrap());
         }
     }
 
