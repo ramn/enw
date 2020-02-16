@@ -111,33 +111,34 @@ fn parse_env_line(line: &str) -> Result<(String, String), BoxError> {
 
 fn parse_value(v: &str) -> String {
     enum S {
+        DoubleQuote,
         Escape,
+        SingleQuote,
         Start,
-        Quote,
     };
     let mut out = String::with_capacity(v.len());
     let mut state = vec![S::Start];
     let mut chars = v.chars();
     'outer: while let Some(c) = chars.next() {
-        match state.last().unwrap() {
+        let s = state.last().unwrap();
+        match s {
             S::Escape => {
-                match c {
-                    '"' | '\'' => {
-                        out.push(c);
-                    }
+                state.pop();
+                match (state.last().unwrap(), c) {
+                    (S::DoubleQuote, '"') => out.push(c),
+                    (S::SingleQuote, '\'') => out.push(c),
                     _ => {
                         out.push('\\');
                         out.push(c);
                     }
-                };
-                state.pop();
+                }
             }
-            S::Quote => match c {
-                '"' => {
+            S::DoubleQuote | S::SingleQuote => match (s, c) {
+                (S::DoubleQuote, '"') | (S::SingleQuote, '\'') => {
                     state.pop();
                     state.push(S::Start);
                 }
-                '\\' => {
+                (_, '\\') => {
                     state.push(S::Escape);
                 }
                 _ => {
@@ -147,7 +148,11 @@ fn parse_value(v: &str) -> String {
             S::Start => match c {
                 '"' => {
                     state.pop();
-                    state.push(S::Quote);
+                    state.push(S::DoubleQuote);
+                }
+                '\'' => {
+                    state.pop();
+                    state.push(S::SingleQuote);
                 }
                 '\\' => state.push(S::Escape),
                 '#' => {
@@ -239,7 +244,16 @@ mod tests {
             p(r##"key="https://xyzzy:xyzzy@localhost:80/xyzzy?abc=\'def#\'#fragment" # comment"##),
             owned(
                 "key",
-                r##"https://xyzzy:xyzzy@localhost:80/xyzzy?abc='def#'#fragment"##,
+                r##"https://xyzzy:xyzzy@localhost:80/xyzzy?abc=\'def#\'#fragment"##,
+            ),
+        );
+        assert_eq!(
+            p(
+                r##"key='https://xyzzy:xyzzy@localhost:80/"xyzzy?\"abc\"=\'def#\'#fragment"' # comment"##
+            ),
+            owned(
+                "key",
+                r##"https://xyzzy:xyzzy@localhost:80/"xyzzy?\"abc\"='def#'#fragment""##,
             ),
         );
         assert_eq!(
