@@ -95,21 +95,18 @@ fn parse_env_doc(text: &str) -> Vec<Result<(String, String), BoxError>> {
         .collect()
 }
 
-// TODO: Add non-parsing mode? Don't trim or expand quotes in the value. Don't support comment at
-// end of line. We should be compatible with different shells, that might not do automatic
-// expansion (dequoting).
 fn parse_env_line(line: &str) -> Result<(String, String), BoxError> {
     let mut parts = line.splitn(2, '=').map(str::trim);
     let key = parts.next().ok_or("KEY missing")?;
     if !key_is_valid(key) {
         return Err(format!("KEY contains invalid characters: {}", key).into());
     }
-    let value = parse_value(parts.next().unwrap_or(""));
+    let value = parse_value(parts.next().unwrap_or(""))?;
     Ok((key.to_owned(), value))
 }
 
 fn key_is_valid(key: &str) -> bool {
-    key.len() > 0
+    !key.is_empty()
         && key
             .chars()
             .take(1)
@@ -117,7 +114,8 @@ fn key_is_valid(key: &str) -> bool {
         && key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
-fn parse_value(v: &str) -> String {
+fn parse_value(v: &str) -> Result<String, BoxError> {
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     enum S {
         DoubleQuote,
         Escape,
@@ -126,20 +124,31 @@ fn parse_value(v: &str) -> String {
     };
     let mut out = String::with_capacity(v.len());
     let mut state = vec![S::Start];
-    let mut chars = v.chars();
-    'outer: while let Some(c) = chars.next() {
-        let s = state.last().unwrap();
+    'outer: for c in v.chars() {
+        let s = *state.last().unwrap();
         match s {
             S::Escape => {
                 state.pop();
                 match (state.last().unwrap(), c) {
-                    (S::DoubleQuote, '"') => out.push(c),
-                    (S::SingleQuote, '\'') => out.push(c),
-                    (_, ' ') => out.push(c),
-                    _ => {
+                    (S::DoubleQuote, '"')
+                    | (S::SingleQuote, '\'')
+                    | (S::DoubleQuote, '\\')
+                    | (S::SingleQuote, '\\') => {
+                        out.push(c);
+                    }
+                    (S::DoubleQuote, _) | (S::SingleQuote, _) => {
                         out.push('\\');
                         out.push(c);
                     }
+                    (S::Start, _) => match c {
+                        '"' | '\'' | ' ' | '$' | '\\' => out.push(c),
+                        _ => {
+                            return Err(
+                                format!("error parsing value, invalid escape: {}", c).into()
+                            );
+                        }
+                    },
+                    (S::Escape, _) => unreachable!(),
                 }
             }
             S::DoubleQuote | S::SingleQuote => match (s, c) {
@@ -173,8 +182,16 @@ fn parse_value(v: &str) -> String {
             },
         }
     }
+    if !(state.len() == 1 && state[0] == S::Start) {
+        return match state.last() {
+            Some(S::DoubleQuote) | Some(S::SingleQuote) => {
+                Err("error parsing value: unmatched quotes.".into())
+            }
+            _ => Err("error parsing value".into()),
+        };
+    }
     trim_end_whitespace(&mut out);
-    out
+    Ok(out)
 }
 
 /// Trim ending whitespace without reallocating
@@ -269,7 +286,7 @@ mod tests {
             p(r##"key="https://xyzzy:xyzzy@localhost:80/xyzzy?abc=\\"def\\"#fragment" # comment"##),
             owned(
                 "key",
-                r##"https://xyzzy:xyzzy@localhost:80/xyzzy?abc=\\def\\#fragment"##,
+                r##"https://xyzzy:xyzzy@localhost:80/xyzzy?abc=\def\#fragment"##,
             ),
         );
         assert_eq!(
@@ -278,7 +295,7 @@ mod tests {
             ),
             owned(
                 "key",
-                r##"https://xyzzy:xyzzy@localhost:80/xyzzy?abc=\\def"##,
+                r##"https://xyzzy:xyzzy@localhost:80/xyzzy?abc=\def"##,
             ),
         );
 
@@ -292,6 +309,8 @@ mod tests {
             owned("key", r##"my multiline\nstring"##,),
         );
     }
+
+    // Test cases borrowed from dotenv
 
     #[test]
     fn test_parse_line_env() {
@@ -331,13 +350,60 @@ mod tests {
         // Note 4 spaces after 'invalid' below
         let actual = parse_env_doc(
             "  invalid    \n\
-            very bacon = yes indeed\n\
-            =value",
+            bad key = no work\n\
+            =lacks key",
         );
 
         assert_eq!(actual.len(), 2);
         for actual in actual {
             assert!(actual.is_err(), "unexpectedly ok: {:?}", actual.unwrap());
+        }
+    }
+
+    #[test]
+    fn test_parse_value_escapes() {
+        let actual = parse_env_doc(
+            r#"
+            KEY1=foo\ bar\ baz
+            KEY2=\$foo
+            KEY3="foo bar \"baz\""
+            KEY4='foo $\bar'\''baz'
+            KEY5="'\"foo\\"\ "bar"
+            KEY6="foo" #end of line comment
+            KEY7="line 1\nline 2"
+            "#,
+        );
+
+        let expected = vec![
+            ("KEY1", r#"foo bar baz"#),
+            ("KEY2", r#"$foo"#),
+            ("KEY3", r#"foo bar "baz""#),
+            ("KEY4", r#"foo $\bar'baz"#),
+            ("KEY5", r#"'"foo\ bar"#),
+            ("KEY6", "foo"),
+            ("KEY7", "line 1\\nline 2"),
+        ]
+        .into_iter()
+        .map(|(k, v)| owned(k, v));
+
+        for (actual, expected) in actual.into_iter().zip(expected) {
+            let actual = actual.unwrap();
+            assert_eq!(actual, expected, "got: {:#?}", actual);
+        }
+    }
+
+    #[test]
+    fn test_parse_value_escapes_invalid() {
+        let actuals = parse_env_doc(
+            r#"
+            KEY1="foo
+            KEY2='foo bar''
+            KEY3=foo\8bar
+            "#,
+        );
+
+        for actual in actuals {
+            assert!(actual.is_err(), "expected err: {:?}", actual);
         }
     }
 
