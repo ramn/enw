@@ -104,7 +104,7 @@ fn parse_env_file(text: &str) -> Vec<Result<(String, String), BoxError>> {
 fn parse_env_line(line: &str) -> Result<(String, String), BoxError> {
     let mut parts = line.splitn(2, '=').map(str::trim);
     let key = parts.next().ok_or("KEY missing")?;
-    let value = parts.next().ok_or("VALUE missing")?;
+    let value = parts.next().unwrap_or("");
     let value = parse_value(value);
     Ok((key.to_owned(), value))
 }
@@ -127,6 +127,7 @@ fn parse_value(v: &str) -> String {
                 match (state.last().unwrap(), c) {
                     (S::DoubleQuote, '"') => out.push(c),
                     (S::SingleQuote, '\'') => out.push(c),
+                    (_, ' ') => out.push(c),
                     _ => {
                         out.push('\\');
                         out.push(c);
@@ -277,6 +278,32 @@ mod tests {
             p(r##"key="my multiline\nstring" # comment"##),
             owned("key", r##"my multiline\nstring"##,),
         );
+
+        assert_eq!(
+            p(r##"key="my multiline\nstring" # comment"##),
+            owned("key", r##"my multiline\nstring"##,),
+        );
+    }
+
+    #[test]
+    fn test_parse_line_env() {
+        let inputs = include_str!("../tests/data/input_01.txt");
+        let expected_iter = vec![
+            ("KEY", "1"),
+            ("KEY2", "2"),
+            ("KEY3", "3"),
+            ("KEY4", "fo ur"),
+            ("KEY5", "fi ve"),
+            ("KEY6", "s ix"),
+            ("KEY7", ""),
+            ("KEY8", ""),
+            ("KEY9", ""),
+            ("KEY10", "whitespace before ="),
+            ("KEY11", "whitespace after ="),
+        ].into_iter().map(|(k, v)| owned(k, v));
+        for (actual, expected) in inputs.lines().map(parse_env_line).zip(expected_iter) {
+            assert_eq!(actual.unwrap(), expected);
+        }
     }
 
     fn p(input: &str) -> (String, String) {
