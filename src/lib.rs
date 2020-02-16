@@ -98,54 +98,79 @@ fn parse_env_file(text: &str) -> Vec<Result<(String, String), BoxError>> {
         .collect()
 }
 
-// TODO: don't trim or expand quotes in the value. Don't support comment at end of line. We should
-// be compatible with different shells, that might not do automatic expansion (dequoting).
+// TODO: Add non-parsing mode? Don't trim or expand quotes in the value. Don't support comment at
+// end of line. We should be compatible with different shells, that might not do automatic
+// expansion (dequoting).
 fn parse_env_line(line: &str) -> Result<(String, String), BoxError> {
     let mut parts = line.splitn(2, '=').map(str::trim);
     let key = parts.next().ok_or("KEY missing")?;
     let value = parts.next().ok_or("VALUE missing")?;
-    let value = strip_tail_comment(value)
-        .trim_matches(&['"', '\''][..])
-        .replace(r#"\""#, r#"""#)
-        .replace(r#"\'"#, r#"'"#);
+    let value = parse_value(value);
     Ok((key.to_owned(), value))
 }
 
-fn strip_tail_comment(value: &str) -> &str {
+fn parse_value(v: &str) -> String {
     enum S {
+        Escape,
         Start,
         Quote,
     };
-    let mut state = S::Start;
-    let mut octothorp_ix = None;
-    let mut chars = value.chars().enumerate();
-    'outer: while let Some((i, c)) = chars.next() {
-        match state {
-            S::Start => match c {
-                '"' => state = S::Quote,
-                '\\' => {
-                    chars.next();
+    let mut out = String::with_capacity(v.len());
+    let mut state = vec![S::Start];
+    let mut chars = v.chars();
+    'outer: while let Some(c) = chars.next() {
+        match state.last().unwrap() {
+            S::Escape => {
+                match c {
+                    '"' | '\'' => {
+                        out.push(c);
+                    }
+                    _ => {
+                        out.push('\\');
+                        out.push(c);
+                    }
+                };
+                state.pop();
+            }
+            S::Quote => match c {
+                '"' => {
+                    state.pop();
+                    state.push(S::Start);
                 }
+                '\\' => {
+                    state.push(S::Escape);
+                }
+                _ => {
+                    out.push(c);
+                }
+            },
+            S::Start => match c {
+                '"' => {
+                    state.pop();
+                    state.push(S::Quote);
+                }
+                '\\' => state.push(S::Escape),
                 '#' => {
-                    octothorp_ix = Some(i);
                     break 'outer;
                 }
-                _ => {}
-            },
-            S::Quote => match c {
-                '"' => state = S::Start,
-                '\\' => {
-                    chars.next();
+                _ => {
+                    out.push(c);
                 }
-                _ => {}
             },
         }
     }
-    if let Some(octothorp_ix) = octothorp_ix {
-        &value[0..octothorp_ix].trim()
-    } else {
-        value
-    }
+    trim_end_whitespace(&mut out);
+    out
+}
+
+/// Trim ending whitespace without reallocating
+fn trim_end_whitespace(s: &mut String) {
+    let trailing_whitespace = s
+        .chars()
+        .rev()
+        .take_while(|&c| char::is_whitespace(c))
+        .count();
+    s.truncate(s.len() - trailing_whitespace);
 }
 
 impl OptionsBuilder {
@@ -196,23 +221,55 @@ mod tests {
 
     #[test]
     fn test_parse_env_line() {
-        assert_equal(
-            r#" MY_URL = "https://xyzzy:xyzzy@localhost:80/xyzzy?abc=def#fragment" # comment"#,
-            (
+        assert_eq!(
+            p(r#" MY_URL = "https://xyzzy:xyzzy@localhost:80/xyzzy?abc=def#fragment" # comment"#),
+            owned(
                 "MY_URL",
                 "https://xyzzy:xyzzy@localhost:80/xyzzy?abc=def#fragment",
             ),
         );
-        assert_equal(
-            r##"key="https://xyzzy:xyzzy@localhost:80/xyzzy?abc=\"def#\"#fragment" # comment"##,
-            (
+        assert_eq!(
+            p(r##"key="https://xyzzy:xyzzy@localhost:80/xyzzy?abc=\"def#\"#fragment" # comment"##),
+            owned(
                 "key",
                 r##"https://xyzzy:xyzzy@localhost:80/xyzzy?abc="def#"#fragment"##,
             ),
         );
+        assert_eq!(
+            p(r##"key="https://xyzzy:xyzzy@localhost:80/xyzzy?abc=\'def#\'#fragment" # comment"##),
+            owned(
+                "key",
+                r##"https://xyzzy:xyzzy@localhost:80/xyzzy?abc='def#'#fragment"##,
+            ),
+        );
+        assert_eq!(
+            p(r##"key="https://xyzzy:xyzzy@localhost:80/xyzzy?abc=\\"def\\"#fragment" # comment"##),
+            owned(
+                "key",
+                r##"https://xyzzy:xyzzy@localhost:80/xyzzy?abc=\\def\\#fragment"##,
+            ),
+        );
+        assert_eq!(
+            p(
+                r##"key="https://xyzzy:xyzzy@localhost:80/xyzzy?abc=\\"def#\\"#fragment" # comment"##
+            ),
+            owned(
+                "key",
+                r##"https://xyzzy:xyzzy@localhost:80/xyzzy?abc=\\def"##,
+            ),
+        );
+
+        assert_eq!(
+            p(r##"key="my multiline\nstring" # comment"##),
+            owned("key", r##"my multiline\nstring"##,),
+        );
     }
 
-    fn assert_equal(input: &str, (k, v): (&str, &str)) {
-        assert_eq!(parse_env_line(input).unwrap(), (k.into(), v.into()));
+    fn p(input: &str) -> (String, String) {
+        parse_env_line(input).unwrap()
+    }
+
+    fn owned(k: &str, v: &str) -> (String, String) {
+        (k.into(), v.into())
     }
 }
