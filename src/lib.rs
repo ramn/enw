@@ -1,4 +1,4 @@
-use std::{env, ffi::OsString, fs, path::PathBuf, process::Command};
+use std::{env, ffi::OsString, fs, os::unix::process::CommandExt, path::PathBuf, process::Command};
 
 use clap::{App, AppSettings, Arg, ArgMatches};
 
@@ -47,9 +47,7 @@ pub fn run(args: impl Iterator<Item = impl Into<OsString> + Clone>) -> Result<()
         cmd.env_clear();
     }
     cmd.envs(env_vars).args(opt_builder.args);
-    let mut child = cmd.spawn()?;
-    child.wait()?;
-    Ok(())
+    Err(cmd.exec().into())
 }
 
 fn parse_arguments(args: impl Iterator<Item = impl Into<OsString> + Clone>) -> ArgMatches<'static> {
