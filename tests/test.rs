@@ -1,12 +1,6 @@
 use std::{env, process::Command};
 
-const EXPECTED: &str = r#"
-MY_URL=https://xyzzy:xyzzy@localhost:80/xyzzy?abc=def#fragment
-a=b
-c=d
-e=f
-postarg=1
-"#;
+const EXPECTED: &str = include_str!("data/expected_01.txt");
 
 #[test]
 fn test_cli() {
@@ -31,5 +25,5 @@ fn test_cli() {
         .unwrap();
     assert!(actual.status.success());
     let stdout = String::from_utf8_lossy(&actual.stdout);
-    assert_eq!(stdout, EXPECTED[1..]);
+    assert_eq!(stdout, EXPECTED);
 }

@@ -1,0 +1,8 @@
+MY_URL=https://xyzzy:xyzzy@localhost:80/xyzzy?abc=def#fragment
+a=b
+c=d
+e=f
+unquoted=foo bar baz
+unquoted2=foo bar baz
+unquoted3=foo\ bar\ baz
+postarg=1
