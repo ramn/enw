@@ -239,9 +239,7 @@ impl OptionsBuilder {
             .take_while(|x| x.contains('='))
             .map(|line| parse_env_line(&line))
             .collect::<Result<Vec<_>, _>>()?;
-        opt_builder.command = rest
-            .get(opt_builder.vars.len())
-            .cloned();
+        opt_builder.command = rest.get(opt_builder.vars.len()).cloned();
         opt_builder.args = rest
             .iter()
             .skip(opt_builder.vars.len() + 1)

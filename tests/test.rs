@@ -19,11 +19,10 @@ fn test_cli() -> Result<(), BoxError> {
             "c=d",
             "e=f",
             "env",
-            "postarg=1"
-        ].into_iter();
-        let actual = Command::new("../target/debug/enw")
-            .args(args)
-            .output()?;
+            "postarg=1",
+        ]
+        .into_iter();
+        let actual = Command::new("../target/debug/enw").args(args).output()?;
         assert!(actual.status.success());
         let stdout = String::from_utf8_lossy(&actual.stdout);
         assert_eq!(stdout, EXPECTED);
@@ -32,19 +31,10 @@ fn test_cli() -> Result<(), BoxError> {
 
     in_directory(&env::current_dir()?.join("tests"), || {
         let args = vec![
-            "-i",
-            "-f",
-            "../src",
-            "-f",
-            "./data",
-            "-n",
-            "a=b",
-            "c=d",
-            "e=f",
-        ].into_iter();
-        let actual = Command::new("../target/debug/enw")
-            .args(args)
-            .output()?;
+            "-i", "-f", "../src", "-f", "./data", "-n", "a=b", "c=d", "e=f",
+        ]
+        .into_iter();
+        let actual = Command::new("../target/debug/enw").args(args).output()?;
         assert!(actual.status.success());
         let stdout = String::from_utf8_lossy(&actual.stdout);
         assert_eq!(stdout, EXPECTED_NO_COMMAND);
@@ -53,7 +43,8 @@ fn test_cli() -> Result<(), BoxError> {
 }
 
 fn in_directory<F>(path: &Path, thunk: F) -> Result<(), BoxError>
-    where F: FnOnce() -> Result<(), BoxError>,
+where
+    F: FnOnce() -> Result<(), BoxError>,
 {
     let current_dir = env::current_dir()?;
     env::set_current_dir(path)?;
