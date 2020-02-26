@@ -13,7 +13,7 @@ const DEFAULT_ENV_FILE_NAME: &str = ".env";
 struct OptionsBuilder {
     env_files: Vec<PathBuf>,
     vars: Vec<(String, String)>,
-    command: String,
+    command: Option<String>,
     args: Vec<String>,
     ignore_env: bool,
     load_implicit_env_file: bool,
@@ -41,13 +41,21 @@ pub fn run(args: impl Iterator<Item = impl Into<OsString> + Clone>) -> Result<()
         .flat_map(|text| parse_env_doc(&text))
         .collect::<Result<_, _>>()?;
     env_vars.extend(opt_builder.vars.into_iter());
+    env_vars.sort();
 
-    let mut cmd = Command::new(opt_builder.command);
-    if opt_builder.ignore_env {
-        cmd.env_clear();
+    if let Some(command) = opt_builder.command {
+        let mut cmd = Command::new(command);
+        if opt_builder.ignore_env {
+            cmd.env_clear();
+        }
+        cmd.envs(env_vars).args(opt_builder.args);
+        Err(cmd.exec().into())
+    } else {
+        for (key, value) in env_vars {
+            println!("{}={}", key, value);
+        }
+        Ok(())
     }
-    cmd.envs(env_vars).args(opt_builder.args);
-    Err(cmd.exec().into())
 }
 
 fn parse_arguments(args: impl Iterator<Item = impl Into<OsString> + Clone>) -> ArgMatches<'static> {
@@ -233,8 +241,7 @@ impl OptionsBuilder {
             .collect::<Result<Vec<_>, _>>()?;
         opt_builder.command = rest
             .get(opt_builder.vars.len())
-            .cloned()
-            .ok_or_else(|| "No COMMAND supplied")?;
+            .cloned();
         opt_builder.args = rest
             .iter()
             .skip(opt_builder.vars.len() + 1)
