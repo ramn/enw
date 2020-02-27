@@ -59,7 +59,7 @@ checksum = "524cbf6897b527295dff137cec09ecf3a05f4fddffd7dfcd1585403449e74198"
 
 [[package]]
 name = "enw"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "clap",
  "pretty_assertions",
