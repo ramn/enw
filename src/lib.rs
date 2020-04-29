@@ -65,6 +65,7 @@ pub fn run(args: impl Iterator<Item = impl Into<OsString> + Clone>) -> Result<()
 fn parse_arguments(args: impl Iterator<Item = impl Into<OsString> + Clone>) -> ArgMatches<'static> {
     App::new("enw")
         .about(ABOUT)
+        .version(env!("CARGO_PKG_VERSION"))
         .usage(USAGE)
         .setting(AppSettings::TrailingVarArg)
         .arg(
