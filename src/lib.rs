@@ -1,4 +1,7 @@
-use std::{env, ffi::OsString, fs, os::unix::process::CommandExt, path::PathBuf, process::Command};
+use std::{
+    collections::HashMap, env, ffi::OsString, fs, os::unix::process::CommandExt, path::PathBuf,
+    process::Command,
+};
 
 use clap::{App, AppSettings, Arg, ArgMatches};
 
@@ -36,11 +39,12 @@ pub fn run(args: impl Iterator<Item = impl Into<OsString> + Clone>) -> Result<()
         .filter(|p| p.is_file())
         .map(fs::read_to_string)
         .collect::<Result<_, _>>()?;
-    let mut env_vars: Vec<_> = env_files
+    let mut env_vars: HashMap<_, _> = env_files
         .iter()
         .flat_map(|text| parse_env_doc(&text))
         .collect::<Result<_, _>>()?;
     env_vars.extend(opt_builder.vars.into_iter());
+    let mut env_vars: Vec<_> = env_vars.into_iter().collect();
     env_vars.sort();
 
     if let Some(command) = opt_builder.command {
