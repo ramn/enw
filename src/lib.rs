@@ -124,7 +124,7 @@ fn key_is_valid(key: &str) -> bool {
             .chars()
             .take(1)
             .all(|c| c.is_ascii_alphabetic() || c == '_')
-        && key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+        && !key.chars().any(|c| c.is_whitespace())
 }
 
 fn parse_value(v: &str) -> Result<String, BoxError> {
@@ -362,10 +362,11 @@ mod tests {
         let actual = parse_env_doc(
             "  invalid    \n\
             bad key = no work\n\
-            =lacks key",
+            =lacks key
+            1abc=starts_with_digit",
         );
 
-        assert_eq!(actual.len(), 2);
+        assert_eq!(actual.len(), 3);
         for actual in actual {
             assert!(actual.is_err(), "unexpectedly ok: {:?}", actual.unwrap());
         }
@@ -416,6 +417,24 @@ mod tests {
         for actual in actuals {
             assert!(actual.is_err(), "expected err: {:?}", actual);
         }
+    }
+
+    #[test]
+    fn test_parse_keys_with_non_standard_chars() {
+        let actuals = parse_env_doc(
+            r#"
+            key.1=value
+            KEY/2=value
+            KEY:3=value
+            "#,
+        );
+
+        let actuals = actuals
+            .into_iter()
+            .map(|r| r.map(|(k, _v)| k))
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(actuals, vec!["key.1", "KEY/2", "KEY:3"]);
     }
 
     fn p(input: &str) -> (String, String) {
