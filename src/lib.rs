@@ -41,7 +41,7 @@ pub fn run(args: impl Iterator<Item = impl Into<OsString> + Clone>) -> Result<()
         .collect::<Result<_, _>>()?;
     let mut env_vars: HashMap<_, _> = env_files
         .iter()
-        .flat_map(|text| parse_env_doc(&text))
+        .flat_map(|text| parse_env_doc(text))
         .collect::<Result<_, _>>()?;
     env_vars.extend(opt_builder.vars.into_iter());
     let mut env_vars: Vec<_> = env_vars.into_iter().collect();
@@ -124,7 +124,7 @@ fn key_is_valid(key: &str) -> bool {
             .chars()
             .take(1)
             .all(|c| c.is_ascii_alphabetic() || c == '_')
-        && key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+        && !key.chars().any(|c| c.is_whitespace())
 }
 
 fn parse_value(v: &str) -> Result<String, BoxError> {
@@ -134,7 +134,7 @@ fn parse_value(v: &str) -> Result<String, BoxError> {
         Escape,
         SingleQuote,
         Start,
-    };
+    }
     let mut out = String::with_capacity(v.len());
     let mut state = vec![S::Start];
     'outer: for c in v.chars() {
@@ -220,10 +220,11 @@ fn trim_end_whitespace(s: &mut String) {
 impl OptionsBuilder {
     fn with_arg_matches(matches: ArgMatches<'static>) -> Result<Self, BoxError> {
         const DEFAULT_VEC: Vec<String> = Vec::new();
-        let mut opt_builder = OptionsBuilder::default();
-        opt_builder.ignore_env = matches.is_present("ignore_env");
-        opt_builder.load_implicit_env_file = !matches.is_present("no_implicit_env_file");
-
+        let mut opt_builder = OptionsBuilder {
+            ignore_env: matches.is_present("ignore_env"),
+            load_implicit_env_file: !matches.is_present("no_implicit_env_file"),
+            ..Default::default()
+        };
         if opt_builder.load_implicit_env_file {
             // .env file from current dir automatically loaded, overridden by explicitly passed in .env
             // files
@@ -238,11 +239,11 @@ impl OptionsBuilder {
                 .iter()
                 .map(|fname| fname.into()),
         );
-        let rest = matches.values_of_lossy("rest").unwrap_or_else(|| vec![]);
+        let rest = matches.values_of_lossy("rest").unwrap_or_else(Vec::new);
         opt_builder.vars = rest
             .iter()
             .take_while(|x| x.contains('='))
-            .map(|line| parse_env_line(&line))
+            .map(|line| parse_env_line(line))
             .collect::<Result<Vec<_>, _>>()?;
         opt_builder.command = rest.get(opt_builder.vars.len()).cloned();
         opt_builder.args = rest
@@ -361,10 +362,11 @@ mod tests {
         let actual = parse_env_doc(
             "  invalid    \n\
             bad key = no work\n\
-            =lacks key",
+            =lacks key
+            1abc=starts_with_digit",
         );
 
-        assert_eq!(actual.len(), 2);
+        assert_eq!(actual.len(), 3);
         for actual in actual {
             assert!(actual.is_err(), "unexpectedly ok: {:?}", actual.unwrap());
         }
@@ -415,6 +417,24 @@ mod tests {
         for actual in actuals {
             assert!(actual.is_err(), "expected err: {:?}", actual);
         }
+    }
+
+    #[test]
+    fn test_parse_keys_with_non_standard_chars() {
+        let actuals = parse_env_doc(
+            r#"
+            key.1=value
+            KEY/2=value
+            KEY:3=value
+            "#,
+        );
+
+        let actuals = actuals
+            .into_iter()
+            .map(|r| r.map(|(k, _v)| k))
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(actuals, vec!["key.1", "KEY/2", "KEY:3"]);
     }
 
     fn p(input: &str) -> (String, String) {
