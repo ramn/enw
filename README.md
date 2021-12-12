@@ -1,7 +1,7 @@
 `enw`
 ====
 
-[![crates.io](http://meritbadge.herokuapp.com/enw)](https://crates.io/crates/enw)
+[![crates.io](https://img.shields.io/crates/v/enw.svg)](https://crates.io/crates/enw)
 [![Docs](https://docs.rs/enw/badge.svg)](http://docs.rs/enw)
 ![Build status](https://github.com/ramn/enw/workflows/build/badge.svg)
 
