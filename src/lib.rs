@@ -20,23 +20,35 @@ struct OptionsBuilder {
     args: Vec<String>,
     ignore_env: bool,
     load_implicit_env_file: bool,
+    print_warnings: bool,
 }
 
 pub fn run(args: impl Iterator<Item = impl Into<OsString> + Clone>) -> Result<(), BoxError> {
     let matches = parse_arguments(args);
     let opt_builder = OptionsBuilder::with_arg_matches(matches)?;
+    let mut warnings = Vec::new();
     let env_files: Vec<_> = opt_builder
         .env_files
         .into_iter()
-        .filter(|p| p.exists())
-        .map(|path| {
+        .filter_map(|path| {
             if path.is_dir() {
-                path.join(DEFAULT_ENV_FILE_NAME)
+                let file_path = path.join(DEFAULT_ENV_FILE_NAME);
+                if file_path.is_file() {
+                    Some(file_path)
+                } else {
+                    warnings.push(format!(
+                        "no {DEFAULT_ENV_FILE_NAME} file found in {}",
+                        path.to_string_lossy()
+                    ));
+                    None
+                }
+            } else if path.is_file() {
+                Some(path)
             } else {
-                path
+                warnings.push(format!("{} does not exist", path.to_string_lossy()));
+                None
             }
         })
-        .filter(|p| p.is_file())
         .map(fs::read_to_string)
         .collect::<Result<_, _>>()?;
     let mut env_vars: HashMap<_, _> = env_files
@@ -46,7 +58,11 @@ pub fn run(args: impl Iterator<Item = impl Into<OsString> + Clone>) -> Result<()
     env_vars.extend(opt_builder.vars.into_iter());
     let mut env_vars: Vec<_> = env_vars.into_iter().collect();
     env_vars.sort();
-
+    if opt_builder.print_warnings {
+        for warning in warnings {
+            eprintln!("warning: {warning}");
+        }
+    }
     if let Some(command) = opt_builder.command {
         let mut cmd = Command::new(command);
         if opt_builder.ignore_env {
@@ -96,6 +112,12 @@ fn parse_arguments(args: impl Iterator<Item = impl Into<OsString> + Clone>) -> A
                 .takes_value(true)
                 .hidden(true)
                 .multiple(true),
+        )
+        .arg(
+            Arg::with_name("quiet")
+                .short("q")
+                .long("quiet")
+                .help("don't print any warnings"),
         )
         .get_matches_from(args)
 }
@@ -223,6 +245,7 @@ impl OptionsBuilder {
         let mut opt_builder = OptionsBuilder {
             ignore_env: matches.is_present("ignore_env"),
             load_implicit_env_file: !matches.is_present("no_implicit_env_file"),
+            print_warnings: !matches.is_present("quiet"),
             ..Default::default()
         };
         if opt_builder.load_implicit_env_file {
