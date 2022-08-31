@@ -239,7 +239,7 @@ impl OptionsBuilder {
                 .iter()
                 .map(|fname| fname.into()),
         );
-        let rest = matches.values_of_lossy("rest").unwrap_or_else(Vec::new);
+        let rest = matches.values_of_lossy("rest").unwrap_or_default();
         opt_builder.vars = rest
             .iter()
             .take_while(|x| x.contains('='))
