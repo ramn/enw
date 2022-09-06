@@ -12,9 +12,15 @@ const ABOUT: &str =
 const USAGE: &str = "enw [OPTION]... [-] [NAME=VALUE] [COMMAND [ARGS]...]";
 const DEFAULT_ENV_FILE_NAME: &str = ".env";
 
+#[derive(Debug)]
+struct EnvFile {
+    path: PathBuf,
+    is_default: bool,
+}
+
 #[derive(Debug, Default)]
 struct OptionsBuilder {
-    env_files: Vec<PathBuf>,
+    env_files: Vec<EnvFile>,
     vars: Vec<(String, String)>,
     command: Option<String>,
     args: Vec<String>,
@@ -30,22 +36,27 @@ pub fn run(args: impl Iterator<Item = impl Into<OsString> + Clone>) -> Result<()
     let env_files: Vec<_> = opt_builder
         .env_files
         .into_iter()
-        .filter_map(|path| {
+        .filter_map(|env_file| {
+            let EnvFile { path, is_default } = env_file;
             if path.is_dir() {
                 let file_path = path.join(DEFAULT_ENV_FILE_NAME);
                 if file_path.is_file() {
                     Some(file_path)
                 } else {
-                    warnings.push(format!(
-                        "no {DEFAULT_ENV_FILE_NAME} file found in {}",
-                        path.to_string_lossy()
-                    ));
+                    if !is_default {
+                        warnings.push(format!(
+                            "no {DEFAULT_ENV_FILE_NAME} file found in {}",
+                            path.to_string_lossy()
+                        ));
+                    }
                     None
                 }
             } else if path.is_file() {
                 Some(path)
             } else {
-                warnings.push(format!("{} does not exist", path.to_string_lossy()));
+                if !is_default {
+                    warnings.push(format!("{} does not exist", path.to_string_lossy()));
+                }
                 None
             }
         })
@@ -251,16 +262,20 @@ impl OptionsBuilder {
         if opt_builder.load_implicit_env_file {
             // .env file from current dir automatically loaded, overridden by explicitly passed in .env
             // files
-            opt_builder
-                .env_files
-                .push(env::current_dir()?.join(DEFAULT_ENV_FILE_NAME));
+            opt_builder.env_files.push(EnvFile {
+                path: env::current_dir()?.join(DEFAULT_ENV_FILE_NAME),
+                is_default: true,
+            });
         }
         opt_builder.env_files.extend(
             matches
                 .values_of_lossy("env_file")
                 .unwrap_or(DEFAULT_VEC)
                 .iter()
-                .map(|fname| fname.into()),
+                .map(|fname| EnvFile {
+                    path: fname.into(),
+                    is_default: false,
+                }),
         );
         let rest = matches.values_of_lossy("rest").unwrap_or_default();
         opt_builder.vars = rest
