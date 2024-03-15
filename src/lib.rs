@@ -83,7 +83,14 @@ pub fn run(args: impl Iterator<Item = impl Into<OsString> + Clone>) -> Result<()
         Err(cmd.exec().into())
     } else {
         for (key, value) in env_vars {
-            println!("{}={}", key, value);
+            if value
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-'))
+            {
+                println!("{}={}", key, value.escape_default());
+            } else {
+                println!("{}=\"{}\"", key, value.escape_default());
+            }
         }
         Ok(())
     }

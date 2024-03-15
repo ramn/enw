@@ -1,0 +1,13 @@
+KEY=1
+KEY10="whitespace before ="
+KEY11="whitespace after ="
+KEY12=fo_ur
+KEY13=fi-ve
+KEY2=2
+KEY3=3
+KEY4="fo ur"
+KEY5="fi ve"
+KEY6="s ix"
+KEY7=
+KEY8=
+KEY9=

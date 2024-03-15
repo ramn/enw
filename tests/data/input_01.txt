@@ -9,3 +9,5 @@ KEY8=
 KEY9=   # foo
 KEY10  ="whitespace before ="
 KEY11=    "whitespace after ="
+KEY12='fo_ur'
+KEY13="fi-ve"
