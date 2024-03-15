@@ -8,6 +8,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v1
-      - uses: icepuma/rust-action@master
+      - uses: rust-build/rust-build.action@v1.4.5
         with:
+          RUSTTARGET: x86_64-unknown-linux-musl
           args: cargo fmt -- --check && ./clippy.sh && cargo test --locked
